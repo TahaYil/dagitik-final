@@ -1,0 +1,87 @@
+services:
+
+  db:
+    image: postgres:15
+    container_name: shopwave-db
+    environment:
+      POSTGRES_DB:       shopwave
+      POSTGRES_USER:     shopwave
+      POSTGRES_PASSWORD: shopwave
+    ports:
+      - "5434:5432"
+    volumes:
+      - shopwave-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopwave -d shopwave"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  inventory-db:
+    image: postgres:15
+    container_name: shopwave-inventory-db
+    environment:
+      POSTGRES_DB:       shopwave_inventory
+      POSTGRES_USER:     inventory
+      POSTGRES_PASSWORD: inventory
+    ports:
+      - "5435:5432"
+    volumes:
+      - shopwave-inventory-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory -d shopwave_inventory"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  inventory-service:
+    build:
+      context: ./inventory-service
+    container_name: shopwave-inventory-service
+    depends_on:
+      inventory-db:
+        condition: service_healthy
+    environment:
+      DB_HOST:     inventory-db
+      DB_PORT:     5432
+      DB_NAME:     shopwave_inventory
+      DB_USER:     inventory
+      DB_PASSWORD: inventory
+      SERVER_PORT: 8081
+    ports:
+      - "8081:8081"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: shopwave-backend
+    depends_on:
+      db:
+        condition: service_healthy
+      inventory-service:
+        condition: service_started
+    environment:
+      DB_HOST:               db
+      DB_PORT:               5432
+      DB_NAME:               shopwave
+      DB_USER:               shopwave
+      DB_PASSWORD:           shopwave
+      SERVER_PORT:           8080
+      INVENTORY_SERVICE_URL: http://inventory-service:8081
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8080
+    container_name: shopwave-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  shopwave-db-data:
+  shopwave-inventory-db-data:
